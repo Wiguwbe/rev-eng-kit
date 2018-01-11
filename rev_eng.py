@@ -408,7 +408,7 @@ def run(asm):
 			rgs[r2]=ad
 
 		# ARITHMETIC
-		if 'add' in ins[1] or 'sub' in ins[1] or 'mul' in ins[1] or 'div' in ins[1] or 'and' in ins[1] or 'xor' in ins[1] or 'or' in ins[0:2]:
+		if 'add' in ins[1] or 'sub' in ins[1] or 'mul' in ins[1] or 'div' in ins[1] or 'and' in ins[1] or 'xor' in ins[1] or 'or' in ins[1][0:2] or 'shl' in ins[1] or 'shr' in ins[1] or 'sar' in ins[1] or 'sal' in ins[1]:
 			# op2 <sig>= op1
 			sig = ''
 			if 'add' in ins[1]:
@@ -423,6 +423,10 @@ def run(asm):
 				sig='&'
 			elif 'xor' in ins[1]:
 				sig='^'
+			elif 'shl' in ins[1] or 'sal' in ins[1]:
+				sig='<<'
+			elif 'sar' in ins[1] or 'shr' in ins[1]:
+				sig='>>'
 			else:	# or
 				sig='|'
 			if ins[2][0]=='%':
