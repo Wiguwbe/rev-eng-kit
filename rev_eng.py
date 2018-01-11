@@ -188,7 +188,10 @@ def prepare(asm):
 				s = ins[3]+' '+rcomps[next[1]]+' '+ins[2]
 				tmp = hvar.pop()
 				tmp = tmp.replace('TRPL',s);
-				ret+=tmp
+				if len(hvar)!=0:
+					hvar[-1]+=tmp
+				else:
+					ret+=tmp
 			i+=1
 		i+=1
 		# continue
