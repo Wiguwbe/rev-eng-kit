@@ -126,75 +126,133 @@ def prepare(asm):
 	while not '<main>:' in lines[i]:
 		i+=1
 	i+=1	# next line
+	start=i
 	while lines[i]!='':
-		ins = decode_op(lines[i])
-		h = ['cmp' in ins[1],'jmp' in ins[1]]
-		if not h[0] and not h[1]:
-			# check if 'IF'/'ELSE' has ended
-			if len(control)!= 0 and control[-1][0]==1:
-				if control[-1][1]==ins[0]:	# the jmp/j<cond> target
-					# has ended
-					if len(hvar)>0:
-						hvar[-1]+='}\n'
-					else:
-						ret+='}\n'
-					control.pop()
-			if len(hvar)>0:
-				hvar[-1]+=lines[i]+'\n'
-			else:
-				ret+=lines[i]+'\n'
-			i+=1
-			continue
-		# now the hard part
-		if h[1]:	# jmp
-			if len(control)==0 or control[-1][0]!=1:
-				# new FOR/WHILE
-				hvar.append('while( TRPL )\n{\n')
-				control.append((2,ins[0]+ins[4]))
-			else:
-				# ELSE
-				control.pop()
-				control.append((1,int(ins[2],16)))
-				if len(hvar)!=0:
-					hvar[-1]+='}\nelse\n{\n'
-				else:
-					ret+='}\nelse\n{\n'
-		elif h[0]:	# cmp
-			next = decode_op(lines[i+1])
-			if int(next[2],16)>ins[0]:
-				# IF statement
-				c = comparators[next[1]]
-				if len(hvar)>0:
-					hvar[-1]+='if( '+ins[3]+' '+c+' '+ins[2]+' )\n{\n'
-				else:
-					ret+='if( '+ins[3]+' '+c+' '+ins[2]+' )\n{\n'
-				control.append((1,int(next[2],16)))
-			elif len(control)==0 or ( control[-1][0]!=1 and control[-1][1]<int(next[2],16)):
-				# DO..WHILE
-				tri = ' '+next[2]+':'	# jmp target
-				trs = 'do\n{\n'+tri
-				s = '}\nwhile( '+ins[3]+' '+rcomps[next[1]]+' '+ins[2]+' );\n'
-				if len(hvar)>0:
-					hvar[-1]=hvar[-1].replace(tri,trs)
-					hvar[-1]+=s
-				else:
-					ret=ret.replace(tri,trs)
-					ret+=s
-			else:
-				# end WHILE
-				# hvar as to be len>0
-				control.pop()
-				hvar[-1]+='}\n'
-				s = ins[3]+' '+rcomps[next[1]]+' '+ins[2]
-				tmp = hvar.pop()
-				tmp = tmp.replace('TRPL',s);
-				if len(hvar)!=0:
-					hvar[-1]+=tmp
-				else:
-					ret+=tmp
-			i+=1
 		i+=1
-		# continue
+	end=i
+	restart = True
+	# iterate through the function until there are no more loops
+	while restart:
+		restart=False
+		# show the state DEBUG
+		for i in range(start,end):
+			print lines[i]
+		print '-----------------'
+		for i in range(start,end):
+			if lines[i][0]!=' ':
+				continue
+			op = decode_op(lines[i])
+			if 'cmp' in op[1]:
+				restart=True
+				# if or do..while
+				next = decode_op(lines[i+1])
+				j = int(next[2],16)
+				if j>op[0]:
+					# IF/ELSE
+					# replace both lines
+					lines[i] = 'if( '+op[2]+' '+comparators[next[1]]+' '+op[3]+' )'
+					lines[i+1] = '{'
+					# find the ELSE statement
+					for ii in range(i+2,end):
+						if lines[ii][0]!=' ':
+							continue
+						# looking for a <jmp> or the target of 'j'
+						p = decode_op(lines[ii])
+						if p[0]==j:
+							# single IF
+							lines.insert(ii,'}')
+							end+=1
+							break;
+						n = decode_op(lines[ii+1])
+						if n[0]==j and 'jmp' in p[1]:
+							# if/ELSE
+							j2 = int(p[2],16)
+							lines[ii]='}\nelse\n{'
+							# find the end of the else
+							for iii in range(ii+2,end):
+								if lines[iii][0]!=' ':
+									continue
+								o = decode_op(lines[iii])
+								if o[0]==j2:
+									# found it
+									lines.insert(iii,'}')
+									end+=1
+									break
+							break
+				else:
+					# DO..WHILE
+					# replace lines
+					lines[i] = '}'
+					lines[i+1]='while( '+op[3]+' '+rcomps[next[1]]+' '+op[2]+' );'
+					# find the start of it
+					for ii in range(start,i):
+						if lines[ii][0]!=' ':
+							continue
+						p = decode_op(lines[ii])
+						if p[0]==j:
+							# found it
+							lines.insert(ii,'do\n{')
+							end+=1
+							break
+				break	# 'end' changed
+			if 'jmp' in op[1]:
+				# WHILE
+				restart=True
+				print 'FOUND a WHILE'
+				next = decode_op(lines[i+1])
+				j = int(op[2],16)
+				# find the end of it
+				for ii in range(i+1,end):
+					if lines[ii][0]!=' ':
+						continue
+					p = decode_op(lines[ii])
+					if p[0]==j:
+						# found the end
+						n = decode_op(lines[ii+1])
+						j2 = int(n[2],16)
+						# do it already
+						lines[i] = 'while( '+p[3]+' '+rcomps[n[1]]+' '+p[2]+' )\n{'
+						if j2!=next[0]:
+							# NESTED LOOPS !
+							nest = [j2]
+							# replace already
+							lines.pop(ii)
+							lines[ii]='}'
+							end-=1	# popped
+							# makes no difference ( i hope ? )
+							while len(nest)>0:
+								for iii in range(i+len(nest),ii):
+									if lines[iii][0]!=' ':
+										continue
+									# find the target
+									o = decode_op(lines[iii])
+									if o[0]==nest[-1]:
+										# found the target
+										s = decode_op(lines[iii+1])
+										j3 = int(s[2],16)
+										lines.pop(iii)	# delete cmp
+										lines[iii] = '}' # replace 'j'
+										# always insert at ( i+1 )
+										lines.insert(i+1,'while( '+o[3]+' '+rcomps[s[1]]+' '+o[2]+' )\n{')
+										# end keeps its value
+										if j3==next[0]:
+											# last nested loop
+											nest.pop()	# delete last entry
+										else:
+											# another nested loop
+											nest.append(j3)
+										break
+						else:
+							# simple WHILE
+							# nothing more to add
+						#	end-=1
+							pass
+						break
+				break	# from the beggining
+	# all done
+	# build final string
+	for i in range(start,end):
+		ret+=lines[i]+'\n'
 	return ret
 
 # check registers for arguments
@@ -538,11 +596,14 @@ def main(exe):
 				out = t
 				break
 
-
 	pre = prepare(out)
+	print pre
 	dec = run(pre)
+	print '-------------------------------'
+	print dec
 	code= ident(dec)
 
+	print '-------------------------------'
 	print code
 
 
