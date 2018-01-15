@@ -76,6 +76,8 @@ def decode_op(op):
 	for v in ll:
 		if v!='':
 			l+=1
+	if len(a)<3:
+		return None
 	b = a[2].split(' ')
 	ins = b[0]
 	for i in range(1,len(b)):
@@ -103,7 +105,8 @@ def get_rname(rr):
 		if rr[1:] in rnames[k]:
 			r=k
 	if r=='':
-		print 'No register name??'
+#		print 'No register name??\t['+rr+']'
+		pass
 	return r
 
 # does some loop / if-else parsing
@@ -135,13 +138,18 @@ def prepare(asm):
 	while restart:
 		restart=False
 		# show the state DEBUG
-		for i in range(start,end):
-			print lines[i]
-		print '-----------------'
+#		for i in range(start,end):
+#			print lines[i]
+#		print '-----------------'
 		for i in range(start,end):
 			if lines[i][0]!=' ':
 				continue
 			op = decode_op(lines[i])
+			if op==None:
+				lines.pop(i)
+				i-=1
+				end-=1
+				continue
 			if 'cmp' in op[1]:
 				restart=True
 				# if or do..while
@@ -302,6 +310,7 @@ def add_args(rs):
 def run(asm):
 	inss = asm.split('\n')
 	i = 0
+	foo = False	# to check if function has been called, useful when there is no return code
 	c= ''	# the C code
 	# all 'relevant' registers
 	rgs = {
@@ -412,8 +421,12 @@ def run(asm):
 					r1=get_rname(ins[2])
 					r2=get_rname(ins[3])
 					if r1=='' or r2=="":
+						rgs[r2]=ins[2]
 						i+=1
 						continue
+					if r1=='rax' and foo:
+						foo=False
+						c+=rgs['rax']+';\n'
 					rgs[r2]=rgs[r1]
 				else:
 					# reg->mem
@@ -421,6 +434,8 @@ def run(asm):
 					if r1=='':
 						i+=1
 						continue
+					if r1=='rax' and foo:
+						foo=False
 					c+=ins[3]+' = '+str(rgs[r1])+';\n'
 			elif ins[2][0]=='$':
 				if ins[3][0]=='%':
@@ -429,10 +444,17 @@ def run(asm):
 					if r1=='':
 						i+=1
 						continue
+					if r1=='rax' and foo:
+						foo=False
+						c+=rgs['rax']+';\n'
 					rgs[r1]=ins[2][1:]
 				else:
 					# imm->mem
-					c+=ins[3]+' = '+ins[2][1:]+';\n'
+					t = ins[3]
+					r = get_rname(ins[3].split('(')[1][:-1])
+					if r!=''  and r!="rbp":
+						t=rgs[r]
+					c+=t+' = '+ins[2][1:]+';\n'
 			else:
 				if ins[3][0]=='%':
 					# mem->reg
@@ -440,6 +462,9 @@ def run(asm):
 					if r1=='':
 						i+=1
 						continue
+					if r1=='rax' and foo:
+						foo=False
+						c+=rgs['rax']+';\n'
 					rgs[r1]=ins[2]
 				else:
 					# mem->mem (impossible?)
@@ -452,12 +477,12 @@ def run(asm):
 			# assume only mem to reg/mem
 			# assume <imm>(%reg),<dest>
 			aa = ins[2].split('(')
-			aa[0]=aa[0][2:]	# ignore '0x'
-			aa[1]=aa[1][:-1]	# ignore '%' and ')'
+			aa[0]=aa[0][aa[0].index('x')+1:]	# ignore '0x'
+			aa[1]=aa[1][:-1]	# ignore ')'
 			r1 = get_rname(aa[1])
 			r2 = get_rname(ins[3])
 			if r1=='' or r2=="":
-				print r1+' '+r2
+				print '['+str(ins[0])+']\t'+r1+' '+r2
 				i+=1
 				continue
 			v = int(aa[0],16)
@@ -465,7 +490,10 @@ def run(asm):
 			if r1=='rip':
 				ad=v+ins[4]+ins[0]
 			else:
-				ad=v+rgs[r1]
+				try:
+					ad=hex(v+rgs[r1])
+				except:
+					ad = ins[2]
 			rgs[r2]=ad
 
 		# ARITHMETIC
@@ -536,6 +564,7 @@ def run(asm):
 			# Possible only print 'foo(params)' ...
 			#
 			# ins[3] should have the name of the function
+			# %rax will have the output of it
 			foo = ''
 			if ins[3]!='':
 				foo = ins[3].split('@')[0][1:]	# '<foo@plt>'
@@ -543,7 +572,8 @@ def run(asm):
 				foo=ins[2]	# the address
 			# how to find the number of params ?
 			# maybe prompt the user ?
-			c+=str(foo)+'('+add_args(rgs)+');\n'
+			rgs['rax']=str(foo)+'('+add_args(rgs)+')'
+			foo = True
 		i+=1
 	return c
 
@@ -597,13 +627,13 @@ def main(exe):
 				break
 
 	pre = prepare(out)
-	print pre
+#	print pre
 	dec = run(pre)
-	print '-------------------------------'
-	print dec
+#	print '-------------------------------'
+#	print dec
 	code= ident(dec)
 
-	print '-------------------------------'
+#	print '-------------------------------'
 	print code
 
 
