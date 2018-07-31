@@ -149,6 +149,6 @@ This is the library
 
 To install, simply, in the `lib/` run (you may need root)
 
-`$ python setup.py build`
+`$ python setup.py install`
 
 After this, you should be able to use the library from anywhere
